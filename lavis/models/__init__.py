@@ -38,7 +38,7 @@ from lavis.models.blip2_models.blip2_image_text_matching import Blip2ITM
 
 from lavis.models.blip2_models.blip2_t5_instruct import *
 from lavis.models.blip2_models.blip2_vicuna_instruct import *
-from lavis.models.blip2_models.blip2_vicuna_instruct_apt import *
+from lavis.models.blip2_models.blip2_vicuna_instruct_dtp import *
 
 # from lavis.models.pnp_vqa_models.pnp_vqa import PNPVQA
 # from lavis.models.pnp_vqa_models.pnp_unifiedqav2_fid import PNPUnifiedQAv2FiD

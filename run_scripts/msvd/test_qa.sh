@@ -1,9 +1,10 @@
+checkpoint_path=$1
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
     --master_port=34658 \
     train.py \
     --cfg-path lavis/projects/malmm/qa_msvd.yaml \
     --options \
-    model.arch blip2_vicuna_instruct_apt \
+    model.arch blip2_vicuna_instruct_dtp \
     model.model_type vicuna7b \
     model.load_finetuned False \
     model.load_pretrained True \
@@ -24,5 +25,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
     run.valid_splits "['val', 'test']" \
     run.report_metric True \
     run.prefix test \
-    run.resume_ckpt_path '/lrh/MA-LMM-shl/lavis/output/msvd_qa/blip2_vicuna_instruct_apt_vicuna7b/train/b32_e10_lr0.0001_wd0.05_q32_f20_fb10_freezevit/checkpoint_best.pth'
+    run.resume_ckpt_path ${checkpoint_path}
 

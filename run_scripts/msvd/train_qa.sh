@@ -1,9 +1,9 @@
-torchrun --nproc_per_node=4 \
+CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
     --master_port=34651 \
     train.py \
     --cfg-path lavis/projects/malmm/qa_msvd.yaml \
     --options \
-    model.arch blip2_vicuna_instruct \
+    model.arch blip2_vicuna_instruct_dtp \
     model.model_type vicuna7b \
     model.load_finetuned False \
     model.load_pretrained True \
