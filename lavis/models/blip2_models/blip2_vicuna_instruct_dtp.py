@@ -116,8 +116,7 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
         self.image_pe = nn.Embedding(max_num_frames, 1408)
         nn.init.constant_(self.image_pe.weight, 0.0)
 
-        # 初始化 ATP 模型
-        self.atp_config = DTPConfig(
+        self.dtp_config = DTPConfig(
             n_layers=2,
             n_heads=2,
             d_model=128, 
@@ -130,7 +129,7 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
             sel_dropout=0.1,
             d_input=512,
         )
-        self.dtp = DTP(config=self.atp_config, visual_hidden_size=self.visual_hidden_size)
+        self.dtp = DTP(config=self.dtp_config, visual_hidden_size=self.visual_hidden_size)
 
     def concat_text_input_output(self, input_ids, input_atts, output_ids, output_atts):
         input_part_targets_len = []
