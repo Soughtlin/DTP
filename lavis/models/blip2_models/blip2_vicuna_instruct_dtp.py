@@ -120,15 +120,15 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
         self.atp_config = DTPConfig(
             n_layers=2,
             n_heads=2,
-            d_model=128,  # Transformer 中自注意力模块的隐藏维度,可以调整(原模型中是input的1/4)
-            d_model_ff=128,  # Transformer 中前馈网络的隐藏层维度，可以调整(原模型中是input的1/4)
+            d_model=128, 
+            d_model_ff=128, 
             enc_dropout=0.1,
             use_text_query=True,
             use_text_cands=False,
             n_cands=0,
             use_ste=True,
             sel_dropout=0.1,
-            d_input=512,  # 与视觉编码器输出的特征维度匹配
+            d_input=512,
         )
         self.dtp = DTP(config=self.atp_config, visual_hidden_size=self.visual_hidden_size)
 
@@ -165,18 +165,16 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
         image = samples["image"]
         # For video data
         is_video = False
-        if image.dim() == 5:  # 检查是否为视频数据
+        if image.dim() == 5: 
             is_video = True
             B, C, T, H, W = image.shape  # batchsize, channels, time(frame), height, width
-        if self.qformer_text_input:  # 检查是否用QFormer处理文本输入
+        if self.qformer_text_input: 
             if is_video:
-                # 将输入文本 samples["text_input"] 按时间帧数 T 进行重复，以便与视频的每一帧对应
                 text_input = [text for text in samples["text_input"] for _ in range(T)]
             else:
                 text_input = samples["text_input"]
 
             if self.use_memory_bank:
-                # 将[1,32,C]的query扩展到[B, 32, C],从而与输入的视频特征纬度(batchsize)匹配
                 query_tokens = self.query_tokens.expand(B, -1, -1)
                 text_Qformer = self.tokenizer(
                     samples["text_input"],  # [B]
@@ -185,45 +183,30 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
                     max_length=self.max_txt_len,
                     return_tensors="pt",
                 ).to(image.device)
-                # 生成[B, N]大小全为1(有效)的mask，[:-1]舍弃了最后一个纬度C(不需要表示特征维度的具体信息,只判定哪些有效那些无效)
                 query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
-                # 将查询 token和文本token的mask拼接，使得整个Q-Former可以同时处理查询和文本的注意力交互
                 Qformer_atts = torch.cat([query_atts, text_Qformer.attention_mask], dim=1)
 
-                # 逐帧遍历
                 for t in range(T):
                     with self.maybe_autocast():
-                        # 抽取batch中每个sample的t帧->[B,C,H,W](batch中的每个样本是独立计算的，不会混淆)
-                        # 经过视觉编码器后，C,H,W纬度消失，转变成patch(256+1,1可能类似CLS token用于全局信息聚合)
-                        # 视觉编码之后的特征向量纬度的大小为1408(C)，ln_vision是一个归一化模块
                         image_embeds = self.ln_vision(
                             self.visual_encoder(image[:, :, t, :, :]))  # [B, 256+1, 1408] [B,N,D]
                     N, C = image_embeds.shape[-2:]
                     judge, new_embeds = self.dtp(image=image, t=t, frames_length=5, prompt=samples["text_input"], N=N)
                     if judge:
                         image_embeds = new_embeds
-                    # Position Encoding,[1]的元素值就是标量t,代表视频的帧序号，即时间信息
                     position_ids = torch.tensor([t]).long().to(image_embeds.device)  # [1]
                     position_ids = position_ids.unsqueeze(0).expand(B, -1)  # [B, 1]
-                    # image_pe应该会把[B,1]扩展为[B,N,C]
                     image_embeds = image_embeds + self.image_pe(position_ids)  # [B, N, C]
-                    # image mask,用在提取视觉特征的cross-attention模块
                     image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)  # [B, N]
                     image_embeds = image_embeds.unsqueeze(1)  # [B, 1, N, C]
 
-                    # encoder_hidden_states表示模型当前对视觉特征的理解
-                    if t == 0:  # 第一帧
-                        # 第一次处理时，还没有历史信息，所以直接使用第一帧的图像特征 image_embeds 作为初始状态
+                    if t == 0: 
                         encoder_hidden_states = image_embeds  # [B, 1, N, C]
-                        # size_constant会用于后续压缩
                         self.size_constant = torch.ones(B, 1, N).to(image_embeds.device)  # [B, 1, N]
                     else:
-                        # 基于当前帧和历史信息更新状态
-                        # 这里visual_memory_bank应该还是None
                         encoder_hidden_states = torch.cat([self.visual_memory_bank, image_embeds],
                                                           dim=1)  # [B, (t+1), N, C]
 
-                    # bert模型
                     query_output = self.Qformer.bert(
                         text_Qformer.input_ids,
                         attention_mask=Qformer_atts,
@@ -252,7 +235,7 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
                     elif self.visual_memory_bank.size(1) > self.memory_bank_length:
                         self.visual_memory_bank, self.compression_size = memory_bank_compress(self.visual_memory_bank,
                                                                                               self.compression_size)
-            else:  # 不使用memory bank
+            else: 
                 query_tokens = self.query_tokens.expand(B * T, -1, -1)
                 text_Qformer = self.tokenizer(
                     text_input,
@@ -277,7 +260,7 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
                     encoder_attention_mask=image_atts,
                     return_dict=True,
                 )
-        else:  # 无文本输入
+        else:  
             if is_video:
                 image = image.permute(0, 2, 1, 3, 4).reshape(B * T, C, H, W)
             with self.maybe_autocast():
@@ -418,9 +401,6 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
                 # 逐帧遍历
                 for t in range(T):
                     with self.maybe_autocast():
-                        # 抽取batch中每个sample的t帧->[B,C,H,W](batch中的每个样本是独立计算的，不会混淆)
-                        # 经过视觉编码器后，C,H,W纬度消失，转变成patch(256+1,1可能类似CLS token用于全局信息聚合)
-                        # 视觉编码之后的特征向量纬度的大小为1408(C)，ln_vision是一个归一化模块
                         image_embeds = self.ln_vision(
                             self.visual_encoder(image[:, :, t, :, :]))  # [B, 256+1, 1408] [B,N,D]
                     N, C = image_embeds.shape[-2:]
@@ -529,7 +509,7 @@ class Blip2VicunaInstruct_MALMM(Blip2Base):
                 repetition_penalty=repetition_penalty,
                 length_penalty=length_penalty,
                 num_return_sequences=num_captions,
-                max_new_tokens=max_length  # 原项目中没有的参数，不加会报错
+                max_new_tokens=max_length
             )
 
         outputs[outputs < 2] = 2  # convert output id -1/0/1 to 2 (eos_token_id)
