@@ -35,19 +35,19 @@ def Discriminator(frames: torch.Tensor, segment_length: int, threshold: float) -
 
 class SelectorModel(nn.Module):
     """
-    ATP Selector Model. Given image-text encoded sequences, outputs a discrete selection for the input frames.
+    DTP Selector Model. Given image-text encoded sequences, outputs a discrete selection for the input frames.
     """
 
     def __init__(self, config: DTPConfig, **kwargs):
         """
-        config: ATPConfig to initialize ATPSelectorModel and its encoder.
+        config: DTPConfig to initialize DTPSelectorModel and its encoder.
         """
         super().__init__()
         self.config = config
-        self.embedding = nn.Linear(config.d_input, config.d_model)  # Linear transformation for input
-        self.atp_encoder = DTPEncoder(config, **kwargs)  # ATP encoder
-        self.dropout = nn.Dropout(p=config.sel_dropout)  # Dropout layer to prevent overfitting
-        self.logits = nn.Linear(config.d_model, 1)  # Logits layer to generate selection scores
+        self.embedding = nn.Linear(config.d_input, config.d_model) 
+        self.dtp_encoder = DTPEncoder(config, **kwargs)  
+        self.dropout = nn.Dropout(p=config.sel_dropout)
+        self.logits = nn.Linear(config.d_model, 1)  
 
     def forward(self,
                 x_vis_seq: torch.tensor,
@@ -55,27 +55,27 @@ class SelectorModel(nn.Module):
                 x_txt_cands: Optional[torch.tensor] = None,
                 **kwargs):
         """
-        Perform ATP selection. Input image-text encoded sequences and return the selected (unmodified) visual embeddings and selection mask.
+        Perform DTP selection. Input image-text encoded sequences and return the selected (unmodified) visual embeddings and selection mask.
         """
         B, T, D = x_vis_seq.size()  # Get batch size, frame count, feature dimension
-        x_vis_seq = x_vis_seq.permute(1, 0, 2)  # Change x_vis_seq to (T, B, D)
+        x_vis_seq = x_vis_seq.permute(1, 0, 2)  # (T, B, D)
 
-        n_text_feats = self.atp_encoder.modality_encoding.n_text_feats  # Get the number of text features
+        n_text_feats = self.dtp_encoder.modality_encoding.n_text_feats  
 
         x_inputs = []
         if self.config.use_text_query:
             assert x_txt_query is not None, "x_txt_query is required."
-            x_inputs.append(x_txt_query.unsqueeze(0))  # Add query text to the input sequence
+            x_inputs.append(x_txt_query.unsqueeze(0)) 
         if self.config.use_text_cands:
             assert x_txt_cands is not None, "x_txt_cands is required."
-            x_inputs.append(x_txt_cands.permute(1, 0, 2))  # Add candidate text to the input sequence
-        x_inputs.append(x_vis_seq)  # Add visual features to the input sequence
-        x_inputs = torch.cat(x_inputs, dim=0)  # Concatenate all input sequences
+            x_inputs.append(x_txt_cands.permute(1, 0, 2))  
+        x_inputs.append(x_vis_seq) 
+        x_inputs = torch.cat(x_inputs, dim=0)  
 
-        x_encoded = self.embedding(self.dropout(x_inputs))  # Apply linear transformation and dropout
-        x_atp_encoded = self.atp_encoder(x_encoded)[n_text_feats:]  # Apply ATP encoder
+        x_encoded = self.embedding(self.dropout(x_inputs))  
+        x_dtp_encoded = self.dtp_encoder(x_encoded)[n_text_feats:] 
 
-        x_logits = self.logits(self.dropout(x_atp_encoded))  # Generate selection scores
+        x_logits = self.logits(self.dropout(x_dtp_encoded)) 
 
         if torch.any(torch.isnan(x_logits)):
             raise ValueError("NaN detected in x_logits.")
@@ -84,14 +84,14 @@ class SelectorModel(nn.Module):
 
         if self.training:
             if self.config.use_ste:
-                selection_mask = F.gumbel_softmax(x_logits, dim=0, hard=True)  # Gumbel softmax during training
+                selection_mask = F.gumbel_softmax(x_logits, dim=0, hard=True)  
             else:
                 temperature = kwargs.get("temperature", 1.0)
                 if temperature <= 0:
                     raise ValueError(f"Invalid temperature: {temperature}")
-                selection_mask = F.softmax(x_logits / temperature, dim=0)  # Softmax with temperature during training
+                selection_mask = F.softmax(x_logits / temperature, dim=0)  
         else:
-            selection_index_argmax = x_logits.max(dim=0, keepdim=True)[1]  # Select the max score index during evaluation
+            selection_index_argmax = x_logits.max(dim=0, keepdim=True)[1] 
             selection_mask = torch.zeros_like(x_logits).scatter_(
                 dim=0, index=selection_index_argmax, value=1.0
             )  # Set the selected index to 1
@@ -101,8 +101,8 @@ class SelectorModel(nn.Module):
         if torch.any(torch.isinf(selection_mask)):
             raise ValueError("Inf detected in selection_mask.")
 
-        selected_frames = (selection_mask * x_vis_seq).sum(dim=0)  # Select frames based on mask
-
+        selected_frames = (selection_mask * x_vis_seq).sum(dim=0) 
+                    
         if torch.any(torch.isnan(selected_frames)):
             raise ValueError("NaN detected in selected_frames.")
         if torch.any(torch.isinf(selected_frames)):
@@ -118,7 +118,7 @@ class DTP(nn.Module):
     def __init__(self, config: DTPConfig, visual_hidden_size):
         super().__init__()
         self.config = config
-        self.atp_selector = SelectorModel(self.config)
+        self.dtp_selector = SelectorModel(self.config)
         self.feature_extractor = VideoFeatureExtractor()
         self.visual_hidden_size = visual_hidden_size
         self.clip_to_image = nn.Linear(512, self.visual_hidden_size)
@@ -132,7 +132,7 @@ class DTP(nn.Module):
                     video_frames=frames,
                     text_inputs=prompt
                 )
-            selected_frame_embeds, selection_mask = self.atp_selector(  
+            selected_frame_embeds, selection_mask = self.dtp_selector(  
                 x_vis_seq=frames_embeds,
                 x_txt_query=prompt_embeds,
                 x_txt_cands=None
